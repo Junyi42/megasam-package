@@ -28,6 +28,8 @@ Anaconda.
 
 1.  To install main libraries, run: \
     `conda env create -f environment.yml`
+    <!-- then, need to set cuda to 11.8 and gcc to 11-->
+    `pip install torch-scatter==2.1.2` 
 
 2.  To install xformers for UniDepth model, follow the instructions from
     https://github.com/facebookresearch/xformers. If you encounter any
@@ -37,6 +39,8 @@ Anaconda.
 
     `conda install xformers-0.0.22.post7-py310_cu11.8.0_pyt2.0.1.tar.bz2`
 
+    `rm xformers-0.0.22.post7-py310_cu11.8.0_pyt2.0.1.tar.bz2`
+
 3.  Compile the extensions for the camera tracking module: \
     `cd base; python setup.py install`
 
@@ -45,7 +49,19 @@ Anaconda.
 1.  Download [DepthAnything checkpoint](https://huggingface.co/spaces/LiheYoung/Depth-Anything/blob/main/checkpoints/depth_anything_vitl14.pth) to
     mega-sam/Depth-Anything/checkpoints/depth_anything_vitl14.pth
 
+```bash
+wget https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/depth_anything_vitl14.pth?download=true
+mkdir Depth-Anything/checkpoints
+mv depth_anything_vitl14.pth Depth-Anything/checkpoints/depth_anything_vitl14.pth
+```
+
 2.  Download and include [RAFT checkpoint](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT) at mega-sam/cvd_opt/raft-things.pth
+
+```bash
+gdown --folder https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT
+mv models/raft-things.pth cvd_opt/raft-things.pth
+rm -rf models
+```
 
 ### Running MegaSaM on Sintel
 
@@ -89,6 +105,12 @@ Anaconda.
 ### Running MegaSaM on in-the-wild video, for example from DAVIS videos
 
 1.  Download example [DAVIS data](https://drive.google.com/file/d/1mis066CUvfBtDZWZ9-ONDqCdno5nmYLe/view?usp=sharing)
+
+```bash
+gdown --fuzzy https://drive.google.com/file/d/1mis066CUvfBtDZWZ9-ONDqCdno5nmYLe/view?usp=sharing
+unzip DAVIS.zip
+rm DAVIS.zip
+```
 
 2.  Precompute mono-depth (Please modify img-path in the script):
     `./mono_depth_scripts/run_mono-depth_demo.sh`

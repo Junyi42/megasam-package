@@ -20,7 +20,7 @@ evalset=(
   breakdance-flare
 )
 
-DATA_DIR=/home/zhengqili/filestore/DAVIS/DAVIS/JPEGImages/480p
+DATA_DIR=DAVIS
 
 # Run DepthAnything
 for seq in ${evalset[@]}; do
