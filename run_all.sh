@@ -1,11 +1,45 @@
+#!/bin/bash
 
-video_path="ego4d1c4.mp4"
-video_name=$(basename "$video_path")
+# bash run_all.sh --video_path "video.mp4" --gpu 0 --video_name "video"
+
+# Default GPU value
 GPU=0
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --video_path)
+      video_path="$2"
+      shift 2
+      ;;
+    --gpu)
+      GPU="$2"
+      shift 2
+      ;;
+    --video_name)
+      video_name="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown option $1"
+      shift 1
+      ;;
+  esac
+done
+
+# If video_name is not set, use basename of video_path
+if [ -z "$video_name" ]; then
+  video_name=$(basename "$video_path")
+fi
+
+# Check if video_path is set
+if [ -z "$video_path" ]; then
+  echo "Error: video_path must be specified"
+  exit 1
+fi
 
 mkdir -p "DAVIS/$video_name"
 ffmpeg -i "$video_path" -vf "fps=30" "DAVIS/$video_name/frame_%04d.png"
-
 
 evalset=(
   $video_name
@@ -25,7 +59,6 @@ for seq in ${evalset[@]}; do
   --outdir Depth-Anything/video_visualization/$seq
 done
 
-
 for seq in ${evalset[@]}; do
   CUDA_VISIBLE_DEVICES=$GPU python UniDepth/scripts/demo_mega-sam.py \
   --scene-name $seq \
@@ -33,9 +66,8 @@ for seq in ${evalset[@]}; do
   --outdir UniDepth/outputs
 done
 
-
 for seq in ${evalset[@]}; do
-    CUDA_VISIBLE_DEVICE=$GPU python camera_tracking_scripts/test_demo.py \
+    CUDA_VISIBLE_DEVICES=$GPU python camera_tracking_scripts/test_demo.py \
     --datapath=$DATA_DIR/$seq \
     --weights=$CKPT_PATH \
     --scene_name $seq \
@@ -53,7 +85,7 @@ for seq in ${evalset[@]}; do
   --scene_name $seq --mixed_precision
 done
 
-# Run CVD optmization
+# Run CVD optimization
 for seq in ${evalset[@]}; do
   CUDA_VISIBLE_DEVICES=$GPU python cvd_opt/cvd_opt.py \
   --scene_name $seq \
