@@ -188,6 +188,7 @@ if __name__ == "__main__":
       "--mono_depth_path", default="Depth-Anything/video_visualization"
   )
   parser.add_argument("--metric_depth_path", default="UniDepth/outputs ")
+  parser.add_argument("--gpu", type=int, default=0)
   args = parser.parse_args()
 
   print("Running evaluation on {}".format(args.datapath))

@@ -1,13 +1,21 @@
 
-# mkdir -p output_folder
-# ffmpeg -i video.mp4 -vf "fps=30" output_folder/frame_%04d.png
+video_path="ego4d1c4.mp4"
+video_name=$(basename "$video_path")
+GPU=0
+
+mkdir -p "DAVIS/$video_name"
+ffmpeg -i "$video_path" -vf "fps=30" "DAVIS/$video_name/frame_%04d.png"
+
 
 evalset=(
-  parkour
+  $video_name
 )
 
 DATA_DIR=DAVIS
-GPU=3
+CKPT_PATH=checkpoints/megasam_final.pth
+
+# Run UniDepth
+export PYTHONPATH="${PYTHONPATH}:$(pwd)/UniDepth"
 
 # Run DepthAnything
 for seq in ${evalset[@]}; do
@@ -17,8 +25,6 @@ for seq in ${evalset[@]}; do
   --outdir Depth-Anything/video_visualization/$seq
 done
 
-# Run UniDepth
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/UniDepth"
 
 for seq in ${evalset[@]}; do
   CUDA_VISIBLE_DEVICES=$GPU python UniDepth/scripts/demo_mega-sam.py \
@@ -27,24 +33,22 @@ for seq in ${evalset[@]}; do
   --outdir UniDepth/outputs
 done
 
-DATA_PATH=$DATA_DIR
-CKPT_PATH=checkpoints/megasam_final.pth
-
 
 for seq in ${evalset[@]}; do
     CUDA_VISIBLE_DEVICE=$GPU python camera_tracking_scripts/test_demo.py \
-    --datapath=$DATA_PATH/$seq \
+    --datapath=$DATA_DIR/$seq \
     --weights=$CKPT_PATH \
     --scene_name $seq \
     --mono_depth_path $(pwd)/Depth-Anything/video_visualization \
     --metric_depth_path $(pwd)/UniDepth/outputs \
-    --disable_vis $@
+    --disable_vis $@ \
+    --gpu $GPU
 done
 
 # Run Raft Optical Flows
 for seq in ${evalset[@]}; do
   CUDA_VISIBLE_DEVICES=$GPU python cvd_opt/preprocess_flow.py \
-  --datapath=$DATA_PATH/$seq \
+  --datapath=$DATA_DIR/$seq \
   --model=cvd_opt/raft-things.pth \
   --scene_name $seq --mixed_precision
 done
