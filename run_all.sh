@@ -38,8 +38,22 @@ if [ -z "$video_path" ]; then
   exit 1
 fi
 
-mkdir -p "DAVIS/$video_name"
-ffmpeg -i "$video_path" -vf "fps=30" "DAVIS/$video_name/frame_%04d.png"
+# If video_path is a folder, move it to the DAVIS directory and rename it if necessary
+if [ -d "$video_path" ]; then
+  # Create DAVIS folder if it doesn't exist
+  mkdir -p "DAVIS"
+  
+  # If video_name is provided, rename the folder
+  if [ -n "$video_name" ]; then
+    cp -r "$video_path" "DAVIS/$video_name"
+  else
+    cp -r "$video_path" "DAVIS/"
+  fi
+else
+  # If it's a video file, run ffmpeg to extract frames
+  mkdir -p "DAVIS/$video_name"
+  ffmpeg -i "$video_path" -vf "fps=30" "DAVIS/$video_name/frame_%04d.png"
+fi
 
 evalset=(
   $video_name
@@ -73,8 +87,7 @@ for seq in ${evalset[@]}; do
     --scene_name $seq \
     --mono_depth_path $(pwd)/Depth-Anything/video_visualization \
     --metric_depth_path $(pwd)/UniDepth/outputs \
-    --disable_vis $@ \
-    --gpu $GPU
+    --disable_vis $@ 
 done
 
 # Run Raft Optical Flows
