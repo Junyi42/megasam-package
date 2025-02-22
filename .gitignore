@@ -6,3 +6,4 @@ __pycache__
 *.npz
 outputs_cvd
 tmp*
+examples

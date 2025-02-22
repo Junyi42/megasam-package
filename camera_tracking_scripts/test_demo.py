@@ -40,7 +40,7 @@ import torch.nn.functional as F
 from droid import Droid
 
 
-def image_stream(
+def image_stream_old(    # resize by effective pixels of 384x512
     image_list,
     mono_disp_list,
     scene_name,
@@ -106,6 +106,84 @@ def image_stream(
     else:
       yield t, image[None], intrinsics, mask
 
+
+def image_stream(       # always resize by the long edge of 512
+    image_list,
+    mono_disp_list,
+    scene_name,
+    use_depth=False,
+    aligns=None,
+    K=None,
+    stride=1,
+):
+    """Image generator."""
+    # Avoid unused variable warning
+    del scene_name, stride
+
+    fx, fy, cx, cy = (
+        K[0, 0],
+        K[1, 1],
+        K[0, 2],
+        K[1, 2],
+    )
+
+    for t, (image_file) in enumerate(image_list):
+        # Read the original image
+        image = cv2.imread(image_file)
+        # Read or compute depth/disparity
+        mono_disp = mono_disp_list[t]
+        depth = np.clip(
+            1.0 / ((1.0 / aligns[2]) * (aligns[0] * mono_disp + aligns[1])),
+            1e-4,
+            1e4,
+        )
+        depth[depth < 1e-2] = 0.0
+
+        # ------------------------------
+        # Core: Resize the long edge of the image and depth to 512, and scale the short edge proportionally, ensuring the result is a multiple of 8
+        # ------------------------------
+        h0, w0, _ = image.shape
+
+        # Determine which side is the long edge
+        if w0 >= h0:
+            # Width is the long edge
+            new_w = 512
+            new_h = int((512.0 / w0) * h0)
+        else:
+            # Height is the long edge
+            new_h = 512
+            new_w = int((512.0 / h0) * w0)
+
+        # Round down the result to a multiple of 8 to prevent errors when the subsequent network has alignment requirements for dimensions
+        new_w = (new_w // 8) * 8
+        new_h = (new_h // 8) * 8
+
+        # Resize the image using OpenCV
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        # Resize the depth using nearest neighbor interpolation to the same size
+        depth = cv2.resize(depth, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+        # Convert the image to PyTorch Tensor (C, H, W)
+        image_tensor = torch.as_tensor(image).permute(2, 0, 1).contiguous()
+
+        # Convert the depth to a tensor
+        depth_tensor = torch.as_tensor(depth).contiguous()
+
+        # Mask
+        mask = torch.ones_like(depth_tensor)
+
+        # Update the intrinsics
+        intrinsics = torch.as_tensor([fx, fy, cx, cy])
+        intrinsics[0] *= float(new_w) / w0  # fx
+        intrinsics[1] *= float(new_h) / h0  # fy
+        intrinsics[2] *= float(new_w) / w0  # cx
+        intrinsics[3] *= float(new_h) / h0  # cy
+
+        if use_depth:
+            yield t, image_tensor[None], depth_tensor, intrinsics, mask
+        else:
+            yield t, image_tensor[None], intrinsics, mask
 
 def save_full_reconstruction(
     droid, full_traj, rgb_list, senor_depth_list, motion_prob, scene_name

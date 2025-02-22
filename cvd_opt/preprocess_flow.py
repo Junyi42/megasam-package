@@ -109,10 +109,37 @@ if __name__ == '__main__':
   for t, (image_file) in tqdm.tqdm(enumerate(image_list)):
     image = cv2.imread(image_file)[..., ::-1]  # rgb
     h0, w0, _ = image.shape
-    h1 = int(h0 * np.sqrt((384 * 512) / (h0 * w0)))
-    w1 = int(w0 * np.sqrt((384 * 512) / (h0 * w0)))
-    image = cv2.resize(image, (w1, h1))
-    image = image[: h1 - h1 % 8, : w1 - w1 % 8].transpose(2, 0, 1)
+
+    # h1 = int(h0 * np.sqrt((384 * 512) / (h0 * w0)))
+    # w1 = int(w0 * np.sqrt((384 * 512) / (h0 * w0)))
+    # image = cv2.resize(image, (w1, h1))
+    # image = image[: h1 - h1 % 8, : w1 - w1 % 8].transpose(2, 0, 1)
+    # img_data.append(image)
+
+    # Determine the longer side and set it to 512
+    if w0 >= h0:
+        # Width is the longer side
+        w1 = 512
+        h1 = int(h0 * (512 / w0))
+    else:
+        # Height is the longer side
+        h1 = 512
+        w1 = int(w0 * (512 / h0))
+
+    # Align the result to a multiple of 8 to meet the resolution requirements of subsequent networks or other processing
+    w1 = (w1 // 8) * 8
+    h1 = (h1 // 8) * 8
+
+    # Scale to (w1, h1)
+    image = cv2.resize(image, (w1, h1), interpolation=cv2.INTER_AREA)
+
+    # If further cropping is needed, such as ensuring a perfect match with certain network requirements, you can crop it here
+    # image = image[: h1 - h1 % 8, : w1 - w1 % 8]
+
+    # (H, W, C) -> (C, H, W)
+    image = image.transpose(2, 0, 1)
+    
+    # Add the finally processed image to the list
     img_data.append(image)
 
   img_data = np.array(img_data)
