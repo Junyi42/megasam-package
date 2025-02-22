@@ -187,8 +187,7 @@ def process_flow(flow_model, img_data, scene_name=None):
     np.save('./cache_flow/%s/flows.npy' % scene_name, np.float16(flows_high))
     np.save('./cache_flow/%s/flows_masks.npy' % scene_name, flow_masks_high)
     np.save('./cache_flow/%s/ii-jj.npy' % scene_name, iijj)
-  else:
-    return np.float16(flows_high), flow_masks_high, iijj
+  return np.float16(flows_high), flow_masks_high, iijj
 
 
 if __name__ == '__main__':

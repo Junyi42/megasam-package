@@ -1,35 +1,43 @@
-import argparse
-import glob
 import os
 import sys
-sys.path.append('Depth-Anything')
-sys.path.append('UniDepth')
-# import matplotlib.pyplot as plt
-from timeit import default_timer as timer
-import cv2
-from depth_anything.dpt import DPT_DINOv2
-from depth_anything.util.transform import NormalizeImage, PrepareForNet, Resize
-import imageio
-import numpy as np
+import glob
+import argparse
 import torch
 import torch.nn.functional as F
-from torchvision.transforms import Compose
-from tqdm import tqdm
-import argparse
-import glob
-import os
-
+import numpy as np
 import cv2
 import imageio
-import numpy as np
 from PIL import Image
-import torch
+from timeit import default_timer as timer
+from tqdm import tqdm
+from torchvision.transforms import Compose
+
+# Append necessary directories to sys.path
+sys.path.append('Depth-Anything')
+sys.path.append('UniDepth')
+sys.path.append("base/droid_slam")
+sys.path.append('cvd_opt/core')
+sys.path.append('cvd_opt')
+from raft import RAFT
+from core.utils.utils import InputPadder
+from pathlib import Path  # pylint: disable=g-importing-member
+
+import argparse
+import cv2
+
+# Import project-specific modules
+from lietorch import SE3
+from droid import Droid
+from depth_anything.dpt import DPT_DINOv2
+from depth_anything.util.transform import NormalizeImage, PrepareForNet, Resize
 from unidepth.models import UniDepthV2
 from unidepth.utils import colorize, image_grid
+from camera_tracking_scripts.test_demo import image_stream, save_full_reconstruction
+from preprocess_flow import prepare_img_data, process_flow
 
 LONG_DIM = 640
 
-def demo_unidepth(model, img_path_list, args):
+def demo_unidepth(model, img_path_list, args, save=False):
   outdir = args.outdir  # "./outputs"
   # os.makedirs(outdir, exist_ok=True)
 
@@ -39,6 +47,7 @@ def demo_unidepth(model, img_path_list, args):
   os.makedirs(outdir_scene, exist_ok=True)
 
   fovs = []
+  depth_list = []
   for img_path in tqdm(img_path_list):
     rgb = np.array(Image.open(img_path))[..., :3]
     if rgb.shape[1] > rgb.shape[0]:
@@ -66,16 +75,20 @@ def demo_unidepth(model, img_path_list, args):
         )
     )
     depth = predictions["depth"][0, 0].cpu().numpy()
-    print(fov_)
+    # print(fov_)
     fovs.append(fov_)
+    depth_list.append(np.float32(depth))
     # breakpoint()
-    np.savez(
-        os.path.join(outdir_scene, img_path.split("/")[-1][:-4] + ".npz"),
-        depth=np.float32(depth),
-        fov=fov_,
-    )
+    if save:
+        np.savez(
+            os.path.join(outdir_scene, img_path.split("/")[-1][:-4] + ".npz"),
+            depth=np.float32(depth),
+            fov=fov_,
+        )
+  return depth_list, fovs  
+      
 
-def demo_depthanything(depth_anything, filenames, args):
+def demo_depthanything(depth_anything, filenames, args, save=False):
   transform = Compose([
       Resize(
           width=768,
@@ -108,45 +121,68 @@ def demo_depthanything(depth_anything, filenames, args):
         depth[None], (h, w), mode='bilinear', align_corners=False
     )[0, 0]
     depth_npy = np.float32(depth.cpu().numpy())
-    depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
 
-    depth = depth.cpu().numpy().astype(np.uint8)
-
-    os.makedirs(os.path.join(args.outdir), exist_ok=True)
-    np.save(
-        os.path.join(args.outdir, filename.split('/')[-1][:-4] + '.npy'),
-        depth_npy,
-    )
+    if save:
+        os.makedirs(os.path.join(args.outdir), exist_ok=True)
+        np.save(
+            os.path.join(args.outdir, filename.split('/')[-1][:-4] + '.npy'),
+            depth_npy,
+        )
+    final_results.append(depth_npy)
+  return final_results
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--img-path', type=str)
   parser.add_argument('--outdir', type=str, default='./vis_depth')
-
   parser.add_argument('--encoder', type=str, default='vitl')
   parser.add_argument('--load-from', type=str, default="Depth-Anything/checkpoints/depth_anything_vitl14.pth")
   # parser.add_argument('--max_size', type=int, required=True)
-
   parser.add_argument(
       '--localhub', dest='localhub', action='store_true', default=False
   )
-
   parser.add_argument("--scene-name", type=str, default="scene_name")
+
+  # for raft
+  parser.add_argument(
+      '--model', default='cvd_opt/raft-things.pth', help='restore checkpoint'
+  )
+  parser.add_argument(
+      '--mixed_precision', type=bool, default=True, help='use mixed precision'
+  )
+  parser.add_argument(
+      '--num_heads',
+      default=1,
+      type=int,
+      help='number of heads in attention and aggregation',
+  )
+  parser.add_argument(
+      '--position_only',
+      default=False,
+      action='store_true',
+      help='only use position-wise attention',
+  )
+  parser.add_argument(
+      '--position_and_content',
+      default=False,
+      action='store_true',
+      help='use position and content-wise attention',
+  )
+  parser.add_argument('--small', action='store_true', help='use small model')
 
   args = parser.parse_args()
 
   img_path_list = sorted(glob.glob(os.path.join(args.img_path, "*.jpg")))
   img_path_list += sorted(glob.glob(os.path.join(args.img_path, "*.png")))
 
-  # step 1: unidepth
-  
-  model = UniDepthV2.from_pretrained("lpiccinelli/unidepth-v2-vitl14")
+  # step 1: prepare unidepth
+
+  model_uni = UniDepthV2.from_pretrained("lpiccinelli/unidepth-v2-vitl14")
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-  model = model.to(device)
-  demo_unidepth(model, img_path_list, args)
+  model_uni = model_uni.to(device)
 
 
-  # step 2: depth anything
+  # step 2: prepare depth anything
 
   assert args.encoder in ['vits', 'vitb', 'vitl']
   if args.encoder == 'vits':
@@ -177,7 +213,20 @@ if __name__ == '__main__':
   depth_anything.load_state_dict(
       torch.load(args.load_from, map_location='cpu'), strict=True
   )
-
   depth_anything.eval()
+
+  # step 3: prepare the flow model
   
-  demo_depthanything(depth_anything, img_path_list, args)
+  model_raft = torch.nn.DataParallel(RAFT(args))
+  model_raft.load_state_dict(torch.load(args.model))
+  print(f'Loaded checkpoint at {args.model}')
+  flow_model = model_raft.module
+  flow_model.cuda()  # .eval()
+  flow_model.eval()
+
+  # step1&2&3: Run the demo
+
+  depth_list_uni, fovs = demo_unidepth(model_uni, img_path_list, args, save=True)
+  depth_list_da = demo_depthanything(depth_anything, img_path_list, args, save=True)
+  img_data = prepare_img_data(img_path_list)
+  flows_high, flow_masks_high, iijj = process_flow(flow_model, img_data, args.scene_name)

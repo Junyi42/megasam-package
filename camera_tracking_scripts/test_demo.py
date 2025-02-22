@@ -383,8 +383,6 @@ if __name__ == "__main__":
           K=K,
       )
   ):
-    if not args.disable_vis:
-      show_image(image[0])
 
     rgb_list.append(image[0])
     senor_depth_list.append(depth)
