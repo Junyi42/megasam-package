@@ -31,82 +31,13 @@ from core.utils.utils import InputPadder
 from pathlib import Path  # pylint: disable=g-importing-member
 
 import argparse
-import tqdm
+from tqdm import tqdm
 import cv2
 
-
-def warp_flow(img, flow):
-  h, w = flow.shape[:2]
-  flow_new = flow.copy()
-  flow_new[:, :, 0] += np.arange(w)
-  flow_new[:, :, 1] += np.arange(h)[:, np.newaxis]
-
-  res = cv2.remap(
-      img, flow_new, None, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT
-  )
-  return res
-
-
-def resize_flow(flow, img_h, img_w):
-  # flow = np.load(flow_path)
-  flow_h, flow_w = flow.shape[0], flow.shape[1]
-  flow[:, :, 0] *= float(img_w) / float(flow_w)
-  flow[:, :, 1] *= float(img_h) / float(flow_h)
-  flow = cv2.resize(flow, (img_w, img_h), cv2.INTER_LINEAR)
-
-  return flow
-
-
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--model', default='raft-things.pth', help='restore checkpoint'
-  )
-  parser.add_argument('--small', action='store_true', help='use small model')
-  parser.add_argument('--scene_name', type=str, help='use small model')
-  parser.add_argument('--datapath')
-
-  parser.add_argument('--path', help='dataset for evaluation')
-  parser.add_argument(
-      '--num_heads',
-      default=1,
-      type=int,
-      help='number of heads in attention and aggregation',
-  )
-  parser.add_argument(
-      '--position_only',
-      default=False,
-      action='store_true',
-      help='only use position-wise attention',
-  )
-  parser.add_argument(
-      '--position_and_content',
-      default=False,
-      action='store_true',
-      help='use position and content-wise attention',
-  )
-  parser.add_argument(
-      '--mixed_precision', action='store_true', help='use mixed precision'
-  )
-  args = parser.parse_args()
-
-  model = torch.nn.DataParallel(RAFT(args))
-  model.load_state_dict(torch.load(args.model))
-  print(f'Loaded checkpoint at {args.model}')
-  flow_model = model.module
-  flow_model.cuda()  # .eval()
-  flow_model.eval()
-
-  scene_name = args.scene_name
-  image_list = sorted(
-      glob.glob(os.path.join(args.datapath, '*.png'))
-  )  # [::stride]
-  image_list += sorted(
-      glob.glob(os.path.join(args.datapath, '*.jpg'))
-  )  # [::stride]
+def prepare_img_data(image_list):
   img_data = []
 
-  for t, (image_file) in tqdm.tqdm(enumerate(image_list)):
+  for t, (image_file) in tqdm(enumerate(image_list)):
     image = cv2.imread(image_file)[..., ::-1]  # rgb
     h0, w0, _ = image.shape
 
@@ -143,8 +74,29 @@ if __name__ == '__main__':
     img_data.append(image)
 
   img_data = np.array(img_data)
+  return img_data
 
-  flows_low = []
+def warp_flow(img, flow):
+  h, w = flow.shape[:2]
+  flow_new = flow.copy()
+  flow_new[:, :, 0] += np.arange(w)
+  flow_new[:, :, 1] += np.arange(h)[:, np.newaxis]
+
+  res = cv2.remap(
+      img, flow_new, None, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT
+  )
+  return res
+
+def resize_flow(flow, img_h, img_w):
+  # flow = np.load(flow_path)
+  flow_h, flow_w = flow.shape[0], flow.shape[1]
+  flow[:, :, 0] *= float(img_w) / float(flow_w)
+  flow[:, :, 1] *= float(img_h) / float(flow_h)
+  flow = cv2.resize(flow, (img_w, img_h), cv2.INTER_LINEAR)
+
+  return flow
+
+def process_flow(flow_model, img_data, scene_name=None):
 
   flows_high = []
   flow_masks_high = []
@@ -160,7 +112,7 @@ if __name__ == '__main__':
 
   for step in [1, 2, 4, 8, 15]:
     flows_arr_low = []
-    for i in tqdm.tqdm(range(max(0, -step), img_data.shape[0] - max(0, step))):
+    for i in tqdm(range(max(0, -step), img_data.shape[0] - max(0, step))):
       image1 = (
           torch.as_tensor(np.ascontiguousarray(img_data[i : i + 1]))
           .float()
@@ -230,7 +182,61 @@ if __name__ == '__main__':
   iijj = np.stack((ii, jj), axis=0)
   flows_high = np.array(flows_arr_up).transpose(0, 3, 1, 2)
   flow_masks_high = np.array(masks_arr_up)[:, None, ...]
-  Path('./cache_flow/%s' % scene_name).mkdir(parents=True, exist_ok=True)
-  np.save('./cache_flow/%s/flows.npy' % scene_name, np.float16(flows_high))
-  np.save('./cache_flow/%s/flows_masks.npy' % scene_name, flow_masks_high)
-  np.save('./cache_flow/%s/ii-jj.npy' % scene_name, iijj)
+  if scene_name is not None:
+    Path('./cache_flow/%s' % scene_name).mkdir(parents=True, exist_ok=True)
+    np.save('./cache_flow/%s/flows.npy' % scene_name, np.float16(flows_high))
+    np.save('./cache_flow/%s/flows_masks.npy' % scene_name, flow_masks_high)
+    np.save('./cache_flow/%s/ii-jj.npy' % scene_name, iijj)
+  else:
+    return np.float16(flows_high), flow_masks_high, iijj
+
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--model', default='cvd_opt/raft-things.pth', help='restore checkpoint'
+  )
+  parser.add_argument('--small', action='store_true', help='use small model')
+  parser.add_argument('--scene_name', type=str, help='use small model')
+  parser.add_argument('--datapath')
+
+  parser.add_argument('--path', help='dataset for evaluation')
+  parser.add_argument(
+      '--num_heads',
+      default=1,
+      type=int,
+      help='number of heads in attention and aggregation',
+  )
+  parser.add_argument(
+      '--position_only',
+      default=False,
+      action='store_true',
+      help='only use position-wise attention',
+  )
+  parser.add_argument(
+      '--position_and_content',
+      default=False,
+      action='store_true',
+      help='use position and content-wise attention',
+  )
+  parser.add_argument(
+      '--mixed_precision', action='store_true', help='use mixed precision'
+  )
+  args = parser.parse_args()
+
+  model = torch.nn.DataParallel(RAFT(args))
+  model.load_state_dict(torch.load(args.model))
+  print(f'Loaded checkpoint at {args.model}')
+  flow_model = model.module
+  flow_model.cuda()  # .eval()
+  flow_model.eval()
+
+  scene_name = args.scene_name
+  image_list = sorted(
+      glob.glob(os.path.join(args.datapath, '*.png'))
+  )  # [::stride]
+  image_list += sorted(
+      glob.glob(os.path.join(args.datapath, '*.jpg'))
+  )  # [::stride]
+  img_data = prepare_img_data(image_list)
+  process_flow(flow_model, img_data, scene_name)
