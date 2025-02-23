@@ -339,9 +339,9 @@ if __name__ == '__main__':
     # step 7: Run the transfer to world
     if args.save_world_tracks:
       process_3d_tracking(
-          out_dict["colors"],
-          out_dict["trajs_uv"],
-          out_dict["trajs_depth"],
+          out_dict["colors"][0],
+          out_dict["trajs_uv"][0],
+          out_dict["trajs_depth"][0],
           intrinsics,
           cam_c2w,
           save_path = os.path.join(save_path, f"dense_3d_track_world.pkl")
