@@ -251,6 +251,8 @@ def droid_slam_optimize(
   img_0 = cv2.imread(image_list[0])
   scales = []
   shifts = []
+  rgb_list = []
+  senor_depth_list = []
   mono_disp_list = []
   for t in range(len(da_disps)):
     da_disp = da_disps[t]
@@ -396,10 +398,6 @@ if __name__ == "__main__":
   print(args)
 
   scene_name = args.scene_name.split("/")[-1]
-
-  tstamps = []
-  rgb_list = []
-  senor_depth_list = []
 
   image_list = sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.jpg")))
   image_list += sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.png")))
