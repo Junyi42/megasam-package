@@ -214,6 +214,7 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
       depths=depths,
       intrinsic=intrinsics,
       cam_c2w=cam_c2w,
+      motion_pro=mot_prob,
   )
   return images, depths, intrinsics, cam_c2w
 

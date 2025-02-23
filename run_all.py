@@ -141,7 +141,7 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--img_path', type=str)
   parser.add_argument('--outdir', type=str, default='./vis_depth')
-  parser.add_argument("--scene-name", type=str, default="scene_name")
+  parser.add_argument("--scene-name", type=str, default=None)
   parser.add_argument("--save_intermediate", action="store_true", default=False)
   parser.add_argument("--iterate", action="store_true", default=False)
   parser.add_argument("--num_frames", type=int, default=512)
@@ -198,7 +198,7 @@ if __name__ == '__main__':
 
   args = parser.parse_args()
   out_dir = args.outdir
-  scene_name = args.scene_name
+  scene_name = args.scene_name if args.scene_name else out_dir.split('/')[-1]
   w_grad = args.w_grad
   w_normal = args.w_normal
 
@@ -274,8 +274,8 @@ if __name__ == '__main__':
   # run the pipeline
 
   if args.iterate: # get all the subfolders in the args.img_path
-    folders = [os.path.join(args.img_path, f) for f in os.listdir(args.img_path) if os.path.isdir(os.path.join(args.img_path, f))]
-    folders = folders[:4]
+    folders = sorted([os.path.join(args.img_path, f) for f in os.listdir(args.img_path) if os.path.isdir(os.path.join(args.img_path, f))])
+    # folders = folders[:16]
   else:
     folders = [args.img_path]
   print(f"Processing {len(folders)} folders")
