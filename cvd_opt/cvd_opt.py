@@ -29,7 +29,7 @@ from lietorch import SE3
 import numpy as np
 import torch
 
-def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_masks, iijj, output_dir, scene_name):
+def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_masks, iijj, output_dir, scene_name, w_grad, w_normal):
   RESIZE_FACTOR = 0.5
   intrinsics = intrinsics[0]
   poses_th = torch.as_tensor(poses, device="cpu").float().cuda()
@@ -180,8 +180,8 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
         w_ratio=1.0,
         w_flow=0.2,
         w_si=1,
-        w_grad=args.w_grad,
-        w_normal=args.w_normal,
+        w_grad=w_grad,
+        w_normal=w_normal,
     )
 
     loss.backward()
@@ -466,4 +466,6 @@ if __name__ == "__main__":
         iijj,
         output_dir,
         scene_name,
+        args.w_grad,
+        args.w_normal,
     )
