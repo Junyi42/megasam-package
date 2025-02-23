@@ -233,78 +233,33 @@ def save_full_reconstruction(
       cam_c2w=cam_c2w[:max_frames],
   )
 
+def return_full_reconstruction(
+    droid, full_traj, rgb_list, senor_depth_list, motion_prob, scene_name
+):
+  """Save full reconstruction."""
+  t = full_traj.shape[0]
+  images = np.array(rgb_list[:t])  # droid.video.images[:t].cpu().numpy()
+  disps = 1.0 / (np.array(senor_depth_list[:t]) + 1e-6)
 
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--datapath")
-  parser.add_argument("--weights", default="droid.pth")
-  parser.add_argument("--buffer", type=int, default=1024)
-  parser.add_argument("--image_size", default=[240, 320])
-  parser.add_argument("--disable_vis", action="store_true")
+  poses = full_traj  # .cpu().numpy()
+  intrinsics = droid.video.intrinsics[:t].cpu().numpy()
 
-  parser.add_argument("--beta", type=float, default=0.3)
-  parser.add_argument(
-      "--filter_thresh", type=float, default=2.0
-  )  # motion threhold for keyframe
-  parser.add_argument("--warmup", type=int, default=8)
-  parser.add_argument("--keyframe_thresh", type=float, default=2.0)
-  parser.add_argument("--frontend_thresh", type=float, default=12.0)
-  parser.add_argument("--frontend_window", type=int, default=25)
-  parser.add_argument("--frontend_radius", type=int, default=2)
-  parser.add_argument("--frontend_nms", type=int, default=1)
+  return images, disps, poses, intrinsics * 8.0, motion_prob
 
-  parser.add_argument("--stereo", action="store_true")
-  parser.add_argument("--depth", action="store_true")
-  parser.add_argument("--upsample", action="store_true")
-  parser.add_argument("--scene_name", help="scene_name")
-
-  parser.add_argument("--backend_thresh", type=float, default=16.0)
-  parser.add_argument("--backend_radius", type=int, default=2)
-  parser.add_argument("--backend_nms", type=int, default=3)
-
-  parser.add_argument(
-      "--mono_depth_path", default="Depth-Anything/video_visualization"
-  )
-  parser.add_argument("--metric_depth_path", default="UniDepth/outputs ")
-  args = parser.parse_args()
-
-  print("Running evaluation on {}".format(args.datapath))
-  print(args)
-
-  scene_name = args.scene_name.split("/")[-1]
-
-  tstamps = []
-  rgb_list = []
-  senor_depth_list = []
-
-  image_list = sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.jpg")))
-  image_list += sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.png")))
-
-  # NOTE Mono is inverse depth, but metric-depth is depth!
-  mono_disp_paths = sorted(
-      glob.glob(
-          os.path.join("%s/%s" % (args.mono_depth_path, scene_name), "*.npy")
-      )
-  )
-  metric_depth_paths = sorted(
-      glob.glob(
-          os.path.join("%s/%s" % (args.metric_depth_path, scene_name), "*.npz")
-      )
-  )
-
+def droid_slam_optimize(
+    image_list,
+    da_disps,
+    metric_depths,
+    scene_name,
+    args,
+):
   img_0 = cv2.imread(image_list[0])
   scales = []
   shifts = []
   mono_disp_list = []
-  fovs = []
-  for t, (mono_disp_file, metric_depth_file) in enumerate(
-      zip(mono_disp_paths, metric_depth_paths)
-  ):
-    da_disp = np.float32(np.load(mono_disp_file))  # / 300.0
-    uni_data = np.load(metric_depth_file)
-    metric_depth = uni_data["depth"]
-
-    fovs.append(uni_data["fov"])
+  for t in range(len(da_disps)):
+    da_disp = da_disps[t]
+    metric_depth = metric_depths[t]
 
     da_disp = cv2.resize(
         da_disp,
@@ -408,6 +363,84 @@ if __name__ == "__main__":
       _opt_intr=True,
       full_ba=True,
       scene_name=scene_name,
+  )
+  return droid, traj_est, rgb_list, senor_depth_list, motion_prob
+
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--datapath")
+  parser.add_argument("--weights", default="droid.pth")
+  parser.add_argument("--buffer", type=int, default=1024)
+  parser.add_argument("--image_size", default=[240, 320])
+  parser.add_argument("--disable_vis", action="store_true")
+
+  parser.add_argument("--beta", type=float, default=0.3)
+  parser.add_argument(
+      "--filter_thresh", type=float, default=2.0
+  )  # motion threhold for keyframe
+  parser.add_argument("--warmup", type=int, default=8)
+  parser.add_argument("--keyframe_thresh", type=float, default=2.0)
+  parser.add_argument("--frontend_thresh", type=float, default=12.0)
+  parser.add_argument("--frontend_window", type=int, default=25)
+  parser.add_argument("--frontend_radius", type=int, default=2)
+  parser.add_argument("--frontend_nms", type=int, default=1)
+
+  parser.add_argument("--stereo", action="store_true")
+  parser.add_argument("--depth", action="store_true")
+  parser.add_argument("--upsample", action="store_true")
+  parser.add_argument("--scene_name", help="scene_name")
+
+  parser.add_argument("--backend_thresh", type=float, default=16.0)
+  parser.add_argument("--backend_radius", type=int, default=2)
+  parser.add_argument("--backend_nms", type=int, default=3)
+
+  parser.add_argument(
+      "--mono_depth_path", default="Depth-Anything/video_visualization"
+  )
+  parser.add_argument("--metric_depth_path", default="UniDepth/outputs ")
+  args = parser.parse_args()
+
+  print("Running evaluation on {}".format(args.datapath))
+  print(args)
+
+  scene_name = args.scene_name.split("/")[-1]
+
+  tstamps = []
+  rgb_list = []
+  senor_depth_list = []
+
+  image_list = sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.jpg")))
+  image_list += sorted(glob.glob(os.path.join("%s" % (args.datapath), "*.png")))
+
+  # NOTE Mono is inverse depth, but metric-depth is depth!
+  mono_disp_paths = sorted(
+      glob.glob(
+          os.path.join("%s/%s" % (args.mono_depth_path, scene_name), "*.npy")
+      )
+  )
+  metric_depth_paths = sorted(
+      glob.glob(
+          os.path.join("%s/%s" % (args.metric_depth_path, scene_name), "*.npz")
+      )
+  )
+
+  fovs = []
+  da_disps = []
+  metric_depths = []
+
+  for t, (mono_disp_file, metric_depth_file) in enumerate(
+      zip(mono_disp_paths, metric_depth_paths)
+  ):
+    uni_data = np.load(metric_depth_file)
+    fovs.append(uni_data["fov"])
+    da_disp = np.float32(np.load(mono_disp_file))
+    da_disps.append(da_disp)
+    uni_data = np.load(metric_depth_file)
+    metric_depth = uni_data["depth"]
+    metric_depths.append(metric_depth)
+
+  droid, traj_est, rgb_list, senor_depth_list, motion_prob = droid_slam_optimize(
+      image_list, da_disps, metric_depths, scene_name, args
   )
 
   if args.scene_name is not None:
