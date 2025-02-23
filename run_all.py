@@ -84,7 +84,6 @@ def demo_unidepth(model, img_path_list, args, save=False):
             fov=fov_,
         )
   return depth_list, fovs  
-      
 
 def demo_depthanything(depth_anything, filenames, args, save=False):
   transform = Compose([
@@ -134,6 +133,7 @@ if __name__ == '__main__':
   parser.add_argument('--img-path', type=str)
   parser.add_argument('--outdir', type=str, default='./vis_depth')
   parser.add_argument("--scene-name", type=str, default="scene_name")
+  parser.add_argument("--save_intermediate", action="store_true", default=False)
 
   # for unidepth & depthanything
   parser.add_argument('--encoder', type=str, default='vitl')
@@ -237,10 +237,10 @@ if __name__ == '__main__':
 
   # step1&2&3: Run the demo
 
-  depth_list_uni, fovs = demo_unidepth(model_uni, img_path_list, args, save=True)
-  depth_list_da = demo_depthanything(depth_anything, img_path_list, args, save=True)
+  depth_list_uni, fovs = demo_unidepth(model_uni, img_path_list, args, save=args.save_intermediate)
+  depth_list_da = demo_depthanything(depth_anything, img_path_list, args, save=args.save_intermediate)
   img_data = prepare_img_data(img_path_list)
-  flows_high, flow_masks_high, iijj = process_flow(flow_model, img_data, args.scene_name)
+  flows_high, flow_masks_high, iijj = process_flow(flow_model, img_data, args.scene_name if args.save_intermediate else None)
   
   # step 4: Run the droid slam
   droid, traj_est, rgb_list, senor_depth_list, motion_prob = droid_slam_optimize(
@@ -253,8 +253,8 @@ if __name__ == '__main__':
 
   # step 5: Run the cvd optimize
   cvd_optimize(
-        images,
-        disps,
+        images[:, ::-1, ...],
+        disps + 1e-6,
         poses,
         intrinsics,
         motion_prob,
