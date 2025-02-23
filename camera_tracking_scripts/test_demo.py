@@ -110,15 +110,10 @@ def image_stream_old(    # resize by effective pixels of 384x512
 def image_stream(       # always resize by the long edge of 512
     image_list,
     mono_disp_list,
-    scene_name,
     use_depth=False,
     aligns=None,
     K=None,
-    stride=1,
 ):
-    """Image generator."""
-    # Avoid unused variable warning
-    del scene_name, stride
 
     fx, fy, cx, cy = (
         K[0, 0],
@@ -234,7 +229,7 @@ def save_full_reconstruction(
   )
 
 def return_full_reconstruction(
-    droid, full_traj, rgb_list, senor_depth_list, motion_prob, scene_name
+    droid, full_traj, rgb_list, senor_depth_list, motion_prob
 ):
   """Save full reconstruction."""
   t = full_traj.shape[0]
@@ -250,7 +245,7 @@ def droid_slam_optimize(
     image_list,
     da_disps,
     metric_depths,
-    scene_name,
+    fovs,
     args,
 ):
   img_0 = cv2.imread(image_list[0])
@@ -332,7 +327,6 @@ def droid_slam_optimize(
       image_stream(
           image_list,
           mono_disp_list,
-          scene_name,
           use_depth=True,
           aligns=aligns,
           K=K,
@@ -355,14 +349,12 @@ def droid_slam_optimize(
       image_stream(
           image_list,
           mono_disp_list,
-          scene_name,
           use_depth=True,
           aligns=aligns,
           K=K,
       ),
       _opt_intr=True,
       full_ba=True,
-      scene_name=scene_name,
   )
   return droid, traj_est, rgb_list, senor_depth_list, motion_prob
 
@@ -440,7 +432,7 @@ if __name__ == "__main__":
     metric_depths.append(metric_depth)
 
   droid, traj_est, rgb_list, senor_depth_list, motion_prob = droid_slam_optimize(
-      image_list, da_disps, metric_depths, scene_name, args
+      image_list, da_disps, metric_depths, fovs, args
   )
 
   if args.scene_name is not None:
