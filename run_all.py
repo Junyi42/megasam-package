@@ -1,8 +1,11 @@
+# CUDA_VISIBLE_DEVICES=1 python run_all.py --img_path DAVIS --iterate --delta
+
 import os
 import sys
 import glob
 import argparse
 import torch
+import pickle
 import torch.nn.functional as F
 import numpy as np
 import cv2
@@ -19,12 +22,13 @@ sys.path.append("base/droid_slam")
 sys.path.append('cvd_opt/core')
 sys.path.append('cvd_opt')
 sys.path.append("base/droid_slam")
+sys.path.append("../DELTA_densetrack3d")
+
 from raft import RAFT
 from droid import Droid
 from core.utils.utils import InputPadder
 from pathlib import Path  # pylint: disable=g-importing-member
 from lietorch import SE3
-from droid import Droid
 from depth_anything.dpt import DPT_DINOv2
 from depth_anything.util.transform import NormalizeImage, PrepareForNet, Resize
 from unidepth.models import UniDepthV2
@@ -32,6 +36,10 @@ from unidepth.utils import colorize, image_grid
 from camera_tracking_scripts.test_demo import droid_slam_optimize, return_full_reconstruction
 from preprocess_flow import prepare_img_data, process_flow
 from cvd_opt import cvd_optimize
+
+from densetrack3d.datasets.custom_data import read_data_with_megasam
+from densetrack3d.models.densetrack3d.densetrack3d import DenseTrack3D
+from densetrack3d.models.predictor.dense_predictor import DensePredictor3D
 
 LONG_DIM = 640
 
@@ -130,10 +138,13 @@ def demo_depthanything(depth_anything, filenames, args, save=False):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--img-path', type=str)
+  parser.add_argument('--img_path', type=str)
   parser.add_argument('--outdir', type=str, default='./vis_depth')
   parser.add_argument("--scene-name", type=str, default="scene_name")
   parser.add_argument("--save_intermediate", action="store_true", default=False)
+  parser.add_argument("--iterate", action="store_true", default=False)
+  parser.add_argument("--num_frames", type=int, default=512)
+  parser.add_argument("--stride", type=int, default=1)
 
   # for unidepth & depthanything
   parser.add_argument('--encoder', type=str, default='vitl')
@@ -177,14 +188,17 @@ if __name__ == '__main__':
   parser.add_argument("--backend_radius", type=int, default=2)
   parser.add_argument("--backend_nms", type=int, default=3)
   parser.add_argument("--disable_vis", type=bool, default=True)
+
+  parser.add_argument("--delta", action="store_true")
+  parser.add_argument("--delta_ckpt", type=str, default="DELTA_densetrack3d/checkpoints/densetrack3d.pth", help="checkpoint path")
+  parser.add_argument("--upsample_factor", type=int, default=4, help="model stride")
+  parser.add_argument("--use_fp16", action="store_true", help="whether to use fp16 precision")
+
   args = parser.parse_args()
   out_dir = args.outdir
   scene_name = args.scene_name
   w_grad = args.w_grad
   w_normal = args.w_normal
-
-  img_path_list = sorted(glob.glob(os.path.join(args.img_path, "*.jpg")))
-  img_path_list += sorted(glob.glob(os.path.join(args.img_path, "*.png")))
 
   # step 1: prepare unidepth
 
@@ -235,34 +249,84 @@ if __name__ == '__main__':
   flow_model.cuda()  # .eval()
   flow_model.eval()
 
-  # step1&2&3: Run the demo
+  # step 4: delta densetrack3d
 
-  depth_list_uni, fovs = demo_unidepth(model_uni, img_path_list, args, save=args.save_intermediate)
-  depth_list_da = demo_depthanything(depth_anything, img_path_list, args, save=args.save_intermediate)
-  img_data = prepare_img_data(img_path_list)
-  flows_high, flow_masks_high, iijj = process_flow(flow_model, img_data, args.scene_name if args.save_intermediate else None)
-  
-  # step 4: Run the droid slam
-  droid, traj_est, rgb_list, senor_depth_list, motion_prob = droid_slam_optimize(
-      img_path_list, depth_list_da, depth_list_uni, fovs, args
-  )
+  if args.delta:
+    delta_model = DenseTrack3D(
+        stride=4,
+        window_len=16,
+        add_space_attn=True,
+        num_virtual_tracks=64,
+        model_resolution=(384, 512),
+        upsample_factor=args.upsample_factor
+    )
+    with open(args.delta_ckpt, "rb") as f:
+        state_dict = torch.load(f, map_location="cpu")
+        if "model" in state_dict:
+            state_dict = state_dict["model"]
+    delta_model.load_state_dict(state_dict, strict=False)
 
-  images, disps, poses, intrinsics, motion_prob = return_full_reconstruction(
-        droid, traj_est, rgb_list, senor_depth_list, motion_prob
+    predictor = DensePredictor3D(model=delta_model)
+    predictor = predictor.eval().cuda()
+
+  # run the pipeline
+
+  if args.iterate: # get all the subfolders in the args.img_path
+    folders = [os.path.join(args.img_path, f) for f in os.listdir(args.img_path) if os.path.isdir(os.path.join(args.img_path, f))]
+    folders = folders[:2]
+  else:
+    folders = [args.img_path]
+  print(f"Processing {len(folders)} folders")
+  for img_path in tqdm(folders):
+    scene_name = img_path.split("/")[-1]
+
+    # step1&2&3: Run the demo
+    img_path_list = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
+    img_path_list += sorted(glob.glob(os.path.join(img_path, "*.png")))
+    img_path_list = img_path_list[:args.num_frames]
+
+    depth_list_uni, fovs = demo_unidepth(model_uni, img_path_list, args, save=args.save_intermediate)
+    depth_list_da = demo_depthanything(depth_anything, img_path_list, args, save=args.save_intermediate)
+    img_data = prepare_img_data(img_path_list)
+    flows_high, flow_masks_high, iijj = process_flow(flow_model, img_data, args.scene_name if args.save_intermediate else None)
+    
+    # step 4: Run the droid slam
+    droid, traj_est, rgb_list, senor_depth_list, motion_prob = droid_slam_optimize(
+        img_path_list, depth_list_da, depth_list_uni, fovs, args
     )
 
-  # step 5: Run the cvd optimize
-  cvd_optimize(
-        images[:, ::-1, ...],
-        disps + 1e-6,
-        poses,
-        intrinsics,
-        motion_prob,
-        flows_high,
-        flow_masks_high,
-        iijj,
-        out_dir,
-        scene_name,
-        w_grad,
-        w_normal
-    )
+    images, disps, poses, intrinsics, motion_prob = return_full_reconstruction(
+            droid, traj_est, rgb_list, senor_depth_list, motion_prob
+        )
+
+    # step 5: Run the cvd optimize
+    images, depths, intrinsics, cam_c2w = cvd_optimize(
+            images[:, ::-1, ...],
+            disps + 1e-6,
+            poses,
+            intrinsics,
+            motion_prob,
+            flows_high,
+            flow_masks_high,
+            iijj,
+            out_dir,
+            scene_name,
+            w_grad,
+            w_normal
+        )
+    
+    print(f"Megasam Finished processing {scene_name}, saved to {out_dir}/{scene_name}")
+
+    # step 6: Run the delta densetrack3d
+    if args.delta:
+      video = torch.from_numpy(images).permute(0, 3, 1, 2).cuda()[None].float()
+      videodepth = torch.from_numpy(depths).unsqueeze(1).cuda()[None].float()
+      with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=args.use_fp16):
+        out_dict = predictor(
+            video,
+            videodepth,
+            grid_query_frame=0,
+        )
+      with open(os.path.join(out_dir, scene_name, "delta_results.pkl"), "wb") as f:
+        pickle.dump(out_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+      print(f"Delta Finished processing {scene_name}, saved to {out_dir}/{scene_name}")

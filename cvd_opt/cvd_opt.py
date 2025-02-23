@@ -203,16 +203,19 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
   )
 
   # poses_ = poses_th.detach().cpu().numpy()
-
+  images = np.uint8(img_data_pt.cpu().numpy().transpose(0, 2, 3, 1) * 255.0)
+  depths = np.clip(np.float16(1.0 / disp_data_opt), 1e-3, 1e2)
+  intrinsics = K_o.detach().cpu().numpy()
+  cam_c2w = cam_c2w.detach().cpu().numpy()
   Path(output_dir).mkdir(parents=True, exist_ok=True)
   np.savez(
-      "%s/%s_sgd_cvd_hr.npz" % (output_dir, scene_name),
-      images=np.uint8(img_data_pt.cpu().numpy().transpose(0, 2, 3, 1) * 255.0),
-      depths=np.clip(np.float16(1.0 / disp_data_opt), 1e-3, 1e2),
-      intrinsic=K_o.detach().cpu().numpy(),
-      cam_c2w=cam_c2w.detach().cpu().numpy(),
+      "%s/%s/sgd_cvd_hr.npz" % (output_dir, scene_name),
+      images=images,
+      depths=depths,
+      intrinsic=intrinsics,
+      cam_c2w=cam_c2w,
   )
-
+  return images, depths, intrinsics, cam_c2w
 
 def gradient_loss(gt, pred, u):
   """Gradient loss."""
