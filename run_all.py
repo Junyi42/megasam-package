@@ -50,8 +50,6 @@ def demo_unidepth(model, img_path_list, args, save=False):
 
   # for scene_name in scene_names:
   scene_name = args.scene_name
-  outdir_scene = os.path.join(outdir, scene_name)
-  os.makedirs(outdir_scene, exist_ok=True)
 
   fovs = []
   depth_list = []
@@ -87,6 +85,8 @@ def demo_unidepth(model, img_path_list, args, save=False):
     depth_list.append(np.float32(depth))
     # breakpoint()
     if save:
+        outdir_scene = os.path.join(outdir, scene_name)
+        os.makedirs(outdir_scene, exist_ok=True)
         np.savez(
             os.path.join(outdir_scene, img_path.split("/")[-1][:-4] + ".npz"),
             depth=np.float32(depth),
@@ -198,7 +198,8 @@ if __name__ == '__main__':
 
   args = parser.parse_args()
   out_dir = args.outdir
-  scene_name = args.scene_name if args.scene_name else out_dir.split('/')[-1]
+  if args.scene_name is None: args.scene_name = args.img_path.split("/")[-2] + args.img_path.split("/")[-1]
+  scene_name = args.scene_name 
   w_grad = args.w_grad
   w_normal = args.w_normal
 
