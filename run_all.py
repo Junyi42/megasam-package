@@ -279,6 +279,8 @@ if __name__ == '__main__':
   print(f"Processing {len(folders)} folders")
   for img_path in tqdm(folders):
     scene_name = img_path.split("/")[-1]
+    save_path = os.path.join(out_dir, scene_name)
+    os.makedirs(save_path, exist_ok=True)
 
     # step1&2&3: Run the demo
     img_path_list = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
@@ -327,6 +329,6 @@ if __name__ == '__main__':
             videodepth,
             grid_query_frame=0,
         )
-      with open(os.path.join(out_dir, scene_name, "delta_results.pkl"), "wb") as f:
+      with open(os.path.join(save_path, "delta_results.pkl"), "wb") as f:
         pickle.dump(out_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
       print(f"Delta Finished processing {scene_name}, saved to {out_dir}/{scene_name}")
