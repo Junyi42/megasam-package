@@ -150,8 +150,8 @@ def image_stream(       # always resize by the long edge of 512
             new_w = int((512.0 / h0) * w0)
 
         # Round down the result to a multiple of 8 to prevent errors when the subsequent network has alignment requirements for dimensions
-        new_w = (new_w // 8) * 8
-        new_h = (new_h // 8) * 8
+        new_w = (new_w+7) // 8 * 8
+        new_h = (new_h+7) // 8 * 8
 
         # Resize the image using OpenCV
         image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)

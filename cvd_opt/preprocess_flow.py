@@ -58,8 +58,8 @@ def prepare_img_data(image_list):
         w1 = int(w0 * (512 / h0))
 
     # Align the result to a multiple of 8 to meet the resolution requirements of subsequent networks or other processing
-    w1 = (w1 // 8) * 8
-    h1 = (h1 // 8) * 8
+    w1 = (w1+7) // 8 * 8
+    h1 = (h1+7) // 8 * 8
 
     # Scale to (w1, h1)
     image = cv2.resize(image, (w1, h1), interpolation=cv2.INTER_AREA)
