@@ -297,7 +297,7 @@ def droid_slam_optimize(
     scales.append(scale)
     shifts.append(shift)
 
-  print("************** UNIDEPTH FOV ", np.median(fovs))
+#   print("************** UNIDEPTH FOV ", np.median(fovs))
   ff = img_0.shape[1] / (2 * np.tan(np.radians(np.median(fovs) / 2.0)))
   K = np.eye(3)
   K[0, 0] = (

@@ -138,7 +138,7 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
     shift_.grad = torch.nan_to_num(shift_.grad, nan=0.0)
 
     optim.step()
-    print("step ", i, loss.item())
+    # print("step ", i, loss.item())
 
   # Then optimize depth and uncertainty
   disp_data = (
@@ -189,7 +189,7 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
     uncertainty.grad = torch.nan_to_num(uncertainty.grad, nan=0.0)
 
     optim.step()
-    print("step ", i, loss.item())
+    # print("step ", i, loss.item())
     losses.append(loss)
 
   disp_data_opt = (

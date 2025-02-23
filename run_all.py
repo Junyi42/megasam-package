@@ -275,7 +275,7 @@ if __name__ == '__main__':
 
   if args.iterate: # get all the subfolders in the args.img_path
     folders = [os.path.join(args.img_path, f) for f in os.listdir(args.img_path) if os.path.isdir(os.path.join(args.img_path, f))]
-    folders = folders[:2]
+    folders = folders[:4]
   else:
     folders = [args.img_path]
   print(f"Processing {len(folders)} folders")
