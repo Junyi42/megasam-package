@@ -29,7 +29,7 @@ from lietorch import SE3
 import numpy as np
 import torch
 
-def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_masks, iijj, output_dir, scene_name, w_grad, w_normal):
+def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_masks, iijj, output_dir, scene_name, w_grad, w_normal, save=True):
   RESIZE_FACTOR = 0.5
   intrinsics = intrinsics[0]
   poses_th = torch.as_tensor(poses, device="cpu").float().cuda()
@@ -207,8 +207,9 @@ def cvd_optimize(img_data, disp_data, poses, intrinsics, mot_prob, flows, flow_m
   depths = np.clip(np.float16(1.0 / disp_data_opt), 1e-3, 1e2)
   intrinsics = K_o.detach().cpu().numpy()
   cam_c2w = cam_c2w.detach().cpu().numpy()
-  Path(output_dir).mkdir(parents=True, exist_ok=True)
-  np.savez(
+  if save:
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    np.savez(
       "%s/%s/sgd_cvd_hr.npz" % (output_dir, scene_name),
       images=images,
       depths=depths,
