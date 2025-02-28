@@ -22,7 +22,6 @@ sys.path.append("base/droid_slam")
 sys.path.append('cvd_opt/core')
 sys.path.append('cvd_opt')
 sys.path.append("base/droid_slam")
-sys.path.append("../DELTA_densetrack3d")
 
 from raft import RAFT
 from droid import Droid
@@ -36,11 +35,6 @@ from unidepth.utils import colorize, image_grid
 from camera_tracking_scripts.test_demo import droid_slam_optimize, return_full_reconstruction
 from preprocess_flow import prepare_img_data, process_flow
 from cvd_opt import cvd_optimize
-
-from densetrack3d.datasets.custom_data import read_data_with_megasam
-from densetrack3d.models.densetrack3d.densetrack3d import DenseTrack3D
-from densetrack3d.models.predictor.dense_predictor import DensePredictor3D
-from transfer_to_world import process_3d_tracking
 
 LONG_DIM = 640
 
@@ -190,11 +184,6 @@ if __name__ == '__main__':
   parser.add_argument("--backend_nms", type=int, default=3)
   parser.add_argument("--disable_vis", type=bool, default=True)
 
-  parser.add_argument("--delta", action="store_true")
-  parser.add_argument("--delta_ckpt", type=str, default="DELTA_densetrack3d/checkpoints/densetrack3d.pth", help="checkpoint path")
-  parser.add_argument("--upsample_factor", type=int, default=4, help="model stride")
-  parser.add_argument("--use_fp16", action="store_true", help="whether to use fp16 precision")
-  parser.add_argument("--save_world_tracks", action="store_true", help="whether to save world tracks")
 
   args = parser.parse_args()
   out_dir = args.outdir
@@ -321,30 +310,3 @@ if __name__ == '__main__':
         )
     
     print(f"Megasam Finished processing {scene_name}, saved to {out_dir}/{scene_name}")
-
-    # step 6: Run the delta densetrack3d
-    if args.delta:
-      video = torch.from_numpy(images).permute(0, 3, 1, 2).cuda()[None].float()
-      videodepth = torch.from_numpy(depths).unsqueeze(1).cuda()[None].float()
-      with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=args.use_fp16):
-        out_dict = predictor(
-            video,
-            videodepth,
-            grid_query_frame=0,
-            save_color=args.save_world_tracks,
-        )
-      with open(os.path.join(save_path, "delta_results.pkl"), "wb") as f:
-        pickle.dump(out_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-      print(f"Delta Finished processing {scene_name}, saved to {out_dir}/{scene_name}")
-
-    # step 7: Run the transfer to world
-    if args.save_world_tracks:
-      process_3d_tracking(
-          out_dict["colors"][0],
-          out_dict["trajs_uv"][0],
-          out_dict["trajs_depth"][0],
-          intrinsics,
-          cam_c2w,
-          save_path = os.path.join(save_path, f"dense_3d_track_world.pkl")
-      )
-      print(f"World tracks saved to {out_dir}/{scene_name}")
