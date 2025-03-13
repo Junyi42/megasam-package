@@ -194,7 +194,7 @@ if __name__ == '__main__':
 
   # step 1: prepare unidepth
 
-  model_uni = UniDepthV2.from_pretrained("lpiccinelli/unidepth-v2-vitl14")
+  model_uni = UniDepthV2.from_pretrained("lpiccinelli/unidepth-v2old-vitl14")
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   model_uni = model_uni.to(device)
 
