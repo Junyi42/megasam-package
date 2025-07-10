@@ -1,4 +1,4 @@
-name: mega_sam
+name: vm1recon
 channels:
   - pytorch
   - nvidia
